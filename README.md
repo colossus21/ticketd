@@ -52,11 +52,13 @@ Then paste [`CLAUDE.md.example`](CLAUDE.md.example) into your project's
 ## CLI (human inspection layer)
 
 ```sh
+ticketd create "Add metrics endpoint" --priority high --label obs   # create a ticket
 ticketd ls --status in_progress      # list tickets
 ticketd show T-42                     # full ticket + worklog
 ticketd comment T-42 "looks good"     # append a comment (author = $USER)
 ticketd context --project voice       # the working-state report
 ticketd backup --dir ~/backups        # timestamped VACUUM INTO copy
+ticketd --version                     # version, commit, build date
 ```
 
 ## Transports
