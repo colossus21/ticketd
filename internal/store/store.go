@@ -18,6 +18,11 @@ import (
 // ErrNotFound is returned when a ticket key does not resolve.
 var ErrNotFound = errors.New("not found")
 
+// keySequence is the counters-table row holding the single global "T-" key
+// sequence shared by all projects in v0. Empty string can never be a real
+// project name (which defaults to "default"), so it is a safe sentinel.
+const keySequence = ""
+
 // Store wraps a SQLite connection pool.
 type Store struct {
 	db *sql.DB
@@ -114,12 +119,16 @@ func (s *Store) CreateTicket(ctx context.Context, p CreateParams) (t domain.Tick
 		return domain.Ticket{}, false, err
 	}
 
-	// Allocate the next key from the counter.
+	// Allocate the next key from a single global counter. In v0 all projects
+	// share one "T-" prefix, and key is globally UNIQUE — so the sequence must
+	// be global too. A per-project counter would make each new project restart
+	// at T-1 and collide with the default project. (Per-project prefixes are a
+	// deferred design question; switching to them is a counters-keyed change.)
 	var seq int64
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO counters(project, next) VALUES (?, 2)
 		 ON CONFLICT(project) DO UPDATE SET next = next + 1
-		 RETURNING next - 1`, project).Scan(&seq)
+		 RETURNING next - 1`, keySequence).Scan(&seq)
 	if err != nil {
 		return domain.Ticket{}, false, fmt.Errorf("allocate key: %w", err)
 	}

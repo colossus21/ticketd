@@ -58,13 +58,19 @@ func TestCreateAndGet(t *testing.T) {
 	}
 }
 
-func TestKeySequencePerProject(t *testing.T) {
+func TestKeySequenceIsGlobalAcrossProjects(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	a, _, _ := st.CreateTicket(ctx, CreateParams{Title: "one", Project: "p"})
-	b, _, _ := st.CreateTicket(ctx, CreateParams{Title: "two", Project: "p"})
-	if a.Key != "T-1" || b.Key != "T-2" {
-		t.Fatalf("expected T-1, T-2; got %s, %s", a.Key, b.Key)
+	// Regression for the multi-project key collision (T-6): the "T-" sequence
+	// is global, so a second project must NOT restart at T-1.
+	a, _, _ := st.CreateTicket(ctx, CreateParams{Title: "one", Project: "alpha"})
+	b, _, err := st.CreateTicket(ctx, CreateParams{Title: "two", Project: "beta"})
+	if err != nil {
+		t.Fatalf("cross-project create should not collide: %v", err)
+	}
+	c, _, _ := st.CreateTicket(ctx, CreateParams{Title: "three", Project: "alpha"})
+	if a.Key != "T-1" || b.Key != "T-2" || c.Key != "T-3" {
+		t.Fatalf("expected globally sequential T-1, T-2, T-3; got %s, %s, %s", a.Key, b.Key, c.Key)
 	}
 }
 
