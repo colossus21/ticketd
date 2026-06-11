@@ -1,0 +1,15 @@
+# Context: voice-assistant — 2026-06-11
+
+## In progress (1)
+### T-42: Add Zigbee sensor MCP bridge [high]
+Last activity 2026-06-11 10:02:
+> BLOCKED: HA token lacks scope. See T-21.
+
+## Blocked (1)
+- T-42 → blocked on T-21 (Home Assistant token setup)
+
+## Next up (top 5 todo by priority)
+1. T-44 [high] Subscribe to zigbee2mqtt/+  (subtask of T-42)
+2. T-45 [normal] Expose get_sensor MCP tool
+
+(12 tickets in backlog · 27 done · use search_tickets to dig deeper)

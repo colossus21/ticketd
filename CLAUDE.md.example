@@ -1,0 +1,13 @@
+## Ticket tracking
+
+This project uses the `tickets` MCP server.
+
+- At session start, call `get_context` before deciding what to do.
+- Before any multi-step task, `search_tickets` for an existing ticket,
+  else `create_ticket`. Move it to in_progress when you start.
+- `add_comment` when you: form a plan, make a non-obvious decision,
+  reject an approach, hit a blocker, or finish. Write for a future
+  session with zero context.
+- Reference ticket keys (T-42) in commit messages.
+- Never mark a ticket done without a closing comment summarizing the
+  outcome and listing the files changed.

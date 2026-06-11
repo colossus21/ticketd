@@ -1,0 +1,128 @@
+// Package cli provides human-facing subcommands (ls/show/comment) that read
+// and write the same store the MCP server uses. It is a thin consumer of store
+// and mcptools rendering — no SQL of its own.
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"os/user"
+
+	"github.com/rafiulalam/ticketd/internal/mcptools"
+	"github.com/rafiulalam/ticketd/internal/store"
+)
+
+// Run dispatches a CLI subcommand. args is everything after the global flags
+// (i.e. flag.Args()). Returns a process exit code.
+func Run(args []string, dbPath string) int {
+	st, err := store.Open(dbPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	switch args[0] {
+	case "ls":
+		return cmdLs(ctx, st, args[1:])
+	case "show":
+		return cmdShow(ctx, st, args[1:])
+	case "comment":
+		return cmdComment(ctx, st, args[1:])
+	case "context":
+		return cmdContext(ctx, st, args[1:])
+	case "help", "-h", "--help":
+		usage()
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n\n", args[0])
+		usage()
+		return 2
+	}
+}
+
+func usage() {
+	fmt.Fprint(os.Stderr, `ticketd — agent-native ticket tracker
+
+Usage:
+  ticketd                          run the MCP server over stdio (default)
+  ticketd --transport http         run the MCP server over HTTP
+  ticketd ls [--status S] [--project P]   list tickets
+  ticketd show T-42                show a ticket with its full worklog
+  ticketd comment T-42 "text"      append a worklog comment (author = $USER)
+  ticketd context [--project P]    print the working-state report
+
+Global flags (before the subcommand):
+  --db PATH    path to the SQLite database
+`)
+}
+
+func cmdLs(ctx context.Context, st *store.Store, args []string) int {
+	fs := flag.NewFlagSet("ls", flag.ContinueOnError)
+	status := fs.String("status", "", "filter by status")
+	project := fs.String("project", "", "filter by project")
+	label := fs.String("label", "", "filter by label")
+	limit := fs.Int("limit", 50, "max results")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	res, err := st.Search(ctx, store.SearchParams{
+		Status: *status, Project: *project, Label: *label, Limit: *limit,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Print(mcptools.SearchResults("", res))
+	return 0
+}
+
+func cmdShow(ctx context.Context, st *store.Store, args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticketd show T-42")
+		return 2
+	}
+	t, err := st.GetTicketFull(ctx, args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Print(mcptools.Ticket(t, false))
+	return 0
+}
+
+func cmdComment(ctx context.Context, st *store.Store, args []string) int {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, `usage: ticketd comment T-42 "your note"`)
+		return 2
+	}
+	author := "human"
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		author = u.Username
+	}
+	n, err := st.AddComment(ctx, args[0], author, args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Printf("Comment added to %s (%d total).\n", args[0], n)
+	return 0
+}
+
+func cmdContext(ctx context.Context, st *store.Store, args []string) int {
+	fs := flag.NewFlagSet("context", flag.ContinueOnError)
+	project := fs.String("project", "", "filter by project")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	rep, err := st.ContextReport(ctx, *project)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Print(mcptools.RenderContextReport(rep))
+	return 0
+}

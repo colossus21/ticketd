@@ -1,0 +1,18 @@
+# T-42: Add Zigbee sensor MCP bridge
+status: in_progress · priority: high · project: voice-assistant
+parent: T-40 · labels: mqtt, home-assistant
+created: 2026-06-10 · updated: 2026-06-11
+
+Bridge zigbee2mqtt sensor topics into the assistant's MCP server.
+
+## Subtasks
+- [x] T-43: Define sensor reading schema (done)
+- [ ] T-44: Subscribe to zigbee2mqtt/+ (in_progress)
+
+## Links
+- blocks T-39: Voice query routing
+- relates T-21: Home Assistant token setup
+
+## Worklog (2 comments)
+**[2026-06-10 18:30] agent** — Plan: paho-mqtt client, cache last reading per device.
+**[2026-06-11 10:02] agent** — BLOCKED: HA token lacks scope. See T-21.

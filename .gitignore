@@ -1,0 +1,4 @@
+/ticketd
+*.db
+*.db-wal
+*.db-shm
