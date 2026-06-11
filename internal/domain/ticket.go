@@ -79,6 +79,10 @@ type Ticket struct {
 	Comments []Comment
 	Subtasks []Subtask
 	Links    []Link
+
+	// CommentCount is set by lightweight list queries (e.g. the board) that
+	// do not load the full Comments slice.
+	CommentCount int
 }
 
 // Comment is an append-only worklog entry. There is no edit or delete.

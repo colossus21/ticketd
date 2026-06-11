@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/rafiulalam/ticketd/internal/domain"
 )
@@ -247,7 +248,13 @@ type ContextTicket struct {
 	ParentKey    string
 	LastActivity string // RFC3339-ish display time of last comment
 	LastComment  string
+	Stale        bool // in_progress/in_review and untouched beyond StaleAfter
+	StaleDays    int  // whole days since updated_at, when Stale
 }
+
+// StaleAfter is how long an in-progress ticket may go untouched before
+// get_context flags it (design open question #3).
+const StaleAfter = 7 * 24 * time.Hour
 
 // BlockedTicket names a blocked ticket and what it is blocked on.
 type BlockedTicket struct {
@@ -269,23 +276,28 @@ func (s *Store) ContextReport(ctx context.Context, project string) (ContextRepor
 
 	// In-progress + in-review tickets, with last comment.
 	ipRows, err := s.db.QueryContext(ctx,
-		`SELECT key, title, priority, status FROM tickets
+		`SELECT key, title, priority, status, updated_at FROM tickets
 		 WHERE status IN ('in_progress','in_review')`+projClause+`
 		 ORDER BY priority ASC, updated_at DESC`, projArg...)
 	if err != nil {
 		return rep, err
 	}
+	cutoff := now().Add(-StaleAfter)
 	var ipKeys []ContextTicket
 	for ipRows.Next() {
 		var ct ContextTicket
-		var status string
+		var status, updatedAt string
 		var pr int
-		if err := ipRows.Scan(&ct.Key, &ct.Title, &pr, &status); err != nil {
+		if err := ipRows.Scan(&ct.Key, &ct.Title, &pr, &status, &updatedAt); err != nil {
 			ipRows.Close()
 			return rep, err
 		}
 		ct.Priority = domain.Priority(pr)
 		ct.Status = domain.Status(status)
+		if u := parseTime(updatedAt); !u.IsZero() && u.Before(cutoff) {
+			ct.Stale = true
+			ct.StaleDays = int(now().Sub(u).Hours() / 24)
+		}
 		ipKeys = append(ipKeys, ct)
 	}
 	ipRows.Close()

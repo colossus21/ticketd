@@ -22,6 +22,8 @@ func main() {
 	dbPath := flag.String("db", defaultDBPath(), "path to SQLite database")
 	transport := flag.String("transport", "stdio", "stdio | http")
 	addr := flag.String("addr", "127.0.0.1:7333", "listen address for http transport")
+	token := flag.String("token", os.Getenv("TICKETD_TOKEN"),
+		"bearer token required on the HTTP MCP endpoint (default $TICKETD_TOKEN; empty = no auth)")
 	flag.Parse()
 
 	// All logging goes to stderr; stdout is reserved for the MCP protocol.
@@ -47,7 +49,7 @@ func main() {
 		slog.Info("ticketd starting", "transport", "stdio", "db", *dbPath)
 		err = srv.Run(ctx, &mcp.StdioTransport{})
 	case "http":
-		err = serveHTTP(ctx, srv, *addr)
+		err = serveHTTP(ctx, srv, st, *addr, *token)
 	default:
 		fatal(fmt.Errorf("unknown transport %q: use stdio or http", *transport))
 	}

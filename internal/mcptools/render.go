@@ -153,7 +153,11 @@ func Context(rep store.ContextReport, today string) string {
 		b.WriteString("_Nothing in progress._\n")
 	}
 	for _, ct := range rep.InProgress {
-		fmt.Fprintf(&b, "### %s: %s [%s]\n", ct.Key, ct.Title, ct.Priority)
+		stale := ""
+		if ct.Stale {
+			stale = fmt.Sprintf(" ⚠ STALE — untouched %d days", ct.StaleDays)
+		}
+		fmt.Fprintf(&b, "### %s: %s [%s]%s\n", ct.Key, ct.Title, ct.Priority, stale)
 		if ct.LastComment != "" {
 			fmt.Fprintf(&b, "Last activity %s:\n> %s\n", displayTime(parse(ct.LastActivity)), firstLine(ct.LastComment))
 		} else {

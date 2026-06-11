@@ -42,7 +42,7 @@ Then paste [`CLAUDE.md.example`](CLAUDE.md.example) into your project's
 
 | Tool | Purpose |
 |---|---|
-| `get_context` | Working-state report: in progress, blocked (with reasons), top of the todo queue. Call at session start. |
+| `get_context` | Working-state report: in progress (stale tickets flagged after 7 idle days), blocked (with reasons), top of the todo queue. Call at session start. |
 | `create_ticket` | Start tracking a non-trivial task; idempotent on exact open-title match. |
 | `update_ticket` | Status/priority/title/labels + links; status transitions are validated. |
 | `add_comment` | Append a worklog entry — the memory a future session resumes from. |
@@ -56,6 +56,7 @@ ticketd ls --status in_progress      # list tickets
 ticketd show T-42                     # full ticket + worklog
 ticketd comment T-42 "looks good"     # append a comment (author = $USER)
 ticketd context --project voice       # the working-state report
+ticketd backup --dir ~/backups        # timestamped VACUUM INTO copy
 ```
 
 ## Transports
@@ -65,7 +66,20 @@ ticketd                          # stdio (default; for Claude Code)
 ticketd --transport http --addr 127.0.0.1:7333   # streamable HTTP
 ```
 
-Bind HTTP to localhost and tunnel over SSH/Tailscale for remote agents.
+Over HTTP the server also exposes a **read-only board** at `http://<addr>/board`
+(single Go template, no JavaScript) — tickets grouped into status lanes, with
+an optional `?project=` filter.
+
+Bind to localhost and tunnel over SSH/Tailscale for remote agents. When the box
+is exposed, set a bearer token to protect the write-capable MCP endpoint:
+
+```sh
+TICKETD_TOKEN=$(openssl rand -hex 16) ticketd --transport http --addr 0.0.0.0:7333
+# or: ticketd --transport http --token "$MYTOKEN"
+```
+
+Remote MCP clients then send `Authorization: Bearer <token>`. The board stays
+unauthenticated (read-only) and should be reached over the tunnel.
 
 ## Status workflow
 

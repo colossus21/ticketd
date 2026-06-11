@@ -313,6 +313,60 @@ func (s *Store) GetTicketFull(ctx context.Context, key string) (domain.Ticket, e
 	return getTicketTx(ctx, tx, key)
 }
 
+// AllTickets returns every ticket (optionally filtered by project) as
+// lightweight records — no comments, links, or subtasks loaded. Ordered by
+// priority then most-recently-updated, suitable for the read-only board.
+func (s *Store) AllTickets(ctx context.Context, project string) ([]domain.Ticket, error) {
+	q := `SELECT t.key, t.project, t.title, t.status, t.priority,
+	             (SELECT p.key FROM tickets p WHERE p.id = t.parent_id),
+	             t.labels, t.updated_at,
+	             (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id)
+	      FROM tickets t`
+	var args []any
+	if project != "" {
+		q += " WHERE t.project = ?"
+		args = append(args, project)
+	}
+	q += " ORDER BY t.priority ASC, t.updated_at DESC"
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.Ticket
+	for rows.Next() {
+		var t domain.Ticket
+		var status, labelsJSON, updatedAt string
+		var parent sql.NullString
+		var priority, commentCount int
+		if err := rows.Scan(&t.Key, &t.Project, &t.Title, &status, &priority,
+			&parent, &labelsJSON, &updatedAt, &commentCount); err != nil {
+			return nil, err
+		}
+		t.Status = domain.Status(status)
+		t.Priority = domain.Priority(priority)
+		t.UpdatedAt = parseTime(updatedAt)
+		if parent.Valid {
+			t.ParentKey = parent.String
+		}
+		_ = json.Unmarshal([]byte(labelsJSON), &t.Labels)
+		t.CommentCount = commentCount
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// Backup writes a consistent copy of the database to dest using VACUUM INTO.
+// dest must not already exist.
+func (s *Store) Backup(ctx context.Context, dest string) error {
+	// VACUUM INTO cannot be parameterized; quote-escape the path literal.
+	escaped := strings.ReplaceAll(dest, "'", "''")
+	_, err := s.db.ExecContext(ctx, "VACUUM INTO '"+escaped+"'")
+	return err
+}
+
 // --- internal helpers, all operating within a transaction ---
 
 type queryer interface {

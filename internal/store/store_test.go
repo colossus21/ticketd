@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rafiulalam/ticketd/internal/domain"
 )
@@ -254,5 +255,86 @@ func TestNotFound(t *testing.T) {
 	_, err := st.GetTicketFull(context.Background(), "T-999")
 	if err == nil {
 		t.Fatal("expected not-found error")
+	}
+}
+
+func TestStaleInProgressFlagged(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	// Pin the clock to a base time so the ticket's updated_at is deterministic.
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	restore := now
+	now = func() time.Time { return base }
+	defer func() { now = restore }()
+
+	st.CreateTicket(ctx, CreateParams{Title: "old work"})
+	ip := domain.InProgress
+	st.UpdateTicket(ctx, UpdateParams{Key: "T-1", Status: &ip})
+
+	// Fresh: report from the same instant — not stale.
+	rep, _ := st.ContextReport(ctx, "")
+	if rep.InProgress[0].Stale {
+		t.Fatal("ticket touched now should not be stale")
+	}
+
+	// Advance the clock 8 days; now it should be flagged.
+	now = func() time.Time { return base.Add(8 * 24 * time.Hour) }
+	rep, _ = st.ContextReport(ctx, "")
+	if !rep.InProgress[0].Stale {
+		t.Fatal("ticket untouched 8 days should be stale")
+	}
+	if rep.InProgress[0].StaleDays < 7 {
+		t.Fatalf("stale days should be ~8, got %d", rep.InProgress[0].StaleDays)
+	}
+}
+
+func TestAllTicketsForBoard(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "a", Labels: []string{"x"}})
+	st.CreateTicket(ctx, CreateParams{Title: "b"})
+	st.AddComment(ctx, "T-1", "agent", "note")
+
+	all, err := st.AllTickets(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 tickets, got %d", len(all))
+	}
+	var t1 *domain.Ticket
+	for i := range all {
+		if all[i].Key == "T-1" {
+			t1 = &all[i]
+		}
+	}
+	if t1 == nil || t1.CommentCount != 1 || len(t1.Labels) != 1 {
+		t.Fatalf("T-1 board record wrong: %+v", t1)
+	}
+}
+
+func TestBackupRoundTrip(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "preserve me"})
+
+	dest := filepath.Join(t.TempDir(), "backup.db")
+	if err := st.Backup(ctx, dest); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+
+	// Open the backup independently and verify the ticket survived.
+	bak, err := Open(dest)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer bak.Close()
+	got, err := bak.GetTicketFull(ctx, "T-1")
+	if err != nil {
+		t.Fatalf("read from backup: %v", err)
+	}
+	if got.Title != "preserve me" {
+		t.Fatalf("backup content mismatch: %q", got.Title)
 	}
 }

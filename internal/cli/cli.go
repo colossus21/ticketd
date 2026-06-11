@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
+	"time"
 
 	"github.com/rafiulalam/ticketd/internal/mcptools"
 	"github.com/rafiulalam/ticketd/internal/store"
@@ -34,6 +36,8 @@ func Run(args []string, dbPath string) int {
 		return cmdComment(ctx, st, args[1:])
 	case "context":
 		return cmdContext(ctx, st, args[1:])
+	case "backup":
+		return cmdBackup(ctx, st, dbPath, args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return 0
@@ -54,6 +58,7 @@ Usage:
   ticketd show T-42                show a ticket with its full worklog
   ticketd comment T-42 "text"      append a worklog comment (author = $USER)
   ticketd context [--project P]    print the working-state report
+  ticketd backup [--dir D]         write a timestamped VACUUM INTO copy
 
 Global flags (before the subcommand):
   --db PATH    path to the SQLite database
@@ -109,6 +114,23 @@ func cmdComment(ctx context.Context, st *store.Store, args []string) int {
 		return 1
 	}
 	fmt.Printf("Comment added to %s (%d total).\n", args[0], n)
+	return 0
+}
+
+func cmdBackup(ctx context.Context, st *store.Store, dbPath string, args []string) int {
+	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
+	dir := fs.String("dir", filepath.Dir(dbPath), "directory to write the backup into")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	base := filepath.Base(dbPath)
+	stamp := time.Now().Format("20060102-150405")
+	dest := filepath.Join(*dir, base+"."+stamp+".bak")
+	if err := st.Backup(ctx, dest); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Printf("Backup written to %s\n", dest)
 	return 0
 }
 
