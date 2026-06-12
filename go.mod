@@ -1,4 +1,4 @@
-module github.com/rafiulalam/ticketd
+module github.com/colossus21/ticketd
 
 go 1.25.4
 

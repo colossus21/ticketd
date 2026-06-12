@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 // displayTime renders a stored RFC3339 UTC instant in local time, minute

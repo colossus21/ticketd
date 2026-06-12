@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 // columns is the left-to-right ordering of status lanes on the board.

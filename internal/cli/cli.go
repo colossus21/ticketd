@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
-	"github.com/rafiulalam/ticketd/internal/mcptools"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/mcptools"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 // stringSlice collects a repeatable string flag (e.g. --label a --label b).

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/domain"
 )
 
 // SearchParams filters and full-text-searches tickets.

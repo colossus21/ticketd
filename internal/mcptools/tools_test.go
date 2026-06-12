@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 // newClientServer wires a server (backed by a temp-file store) to an in-process

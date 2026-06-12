@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/rafiulalam/ticketd/internal/domain"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 // now is overridable in tests for deterministic context dates.

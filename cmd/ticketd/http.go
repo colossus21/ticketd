@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/rafiulalam/ticketd/internal/store"
-	"github.com/rafiulalam/ticketd/internal/web"
+	"github.com/colossus21/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/web"
 )
 
 // serveHTTP serves the MCP server (streamable HTTP) plus a read-only HTML

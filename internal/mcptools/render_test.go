@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
-	"github.com/rafiulalam/ticketd/internal/store"
+	"github.com/colossus21/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/store"
 )
 
 var update = flag.Bool("update", false, "update golden files")

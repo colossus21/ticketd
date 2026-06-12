@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/domain"
 	_ "modernc.org/sqlite"
 )
 
