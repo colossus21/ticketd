@@ -13,7 +13,27 @@ The worklog is the primary artifact, not the status field.
 - **A `get_context` tool** that gives an agent full situational awareness in one
   call — the core loop of the product.
 
-## Build
+## Install
+
+**With Go** (puts `ticketd` in `$(go env GOPATH)/bin`):
+
+```sh
+go install github.com/colossus21/ticketd/cmd/ticketd@latest
+```
+
+**Prebuilt binaries** — download the archive for your OS/arch from the
+[releases page](https://github.com/colossus21/ticketd/releases), then:
+
+```sh
+tar -xzf ticketd_*_linux_arm64.tar.gz
+install ticketd ~/.local/bin/      # or anywhere on your PATH
+ticketd --version
+```
+
+Releases are cut by pushing a `v*` tag; GoReleaser cross-compiles for
+linux/darwin × amd64/arm64 (pure Go, no CGO) and attaches the archives.
+
+## Build from source
 
 ```sh
 go build -o ticketd ./cmd/ticketd
