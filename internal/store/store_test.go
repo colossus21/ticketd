@@ -2,13 +2,15 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/rafiulalam/ticketd/internal/domain"
+	"github.com/colossus21/ticketd/internal/domain"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -317,6 +319,50 @@ func TestAllTicketsForBoard(t *testing.T) {
 	}
 	if t1 == nil || t1.CommentCount != 1 || len(t1.Labels) != 1 {
 		t.Fatalf("T-1 board record wrong: %+v", t1)
+	}
+}
+
+func TestMigrationSeedsGlobalCounterFromExistingKeys(t *testing.T) {
+	// Reproduce a database created before the global-counter fix: schema at
+	// version 1, tickets T-1..T-3, and stale per-project counter rows. After
+	// Open applies migration 002, the next key must be T-4, not a colliding T-1.
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	dsn := path + "?_pragma=foreign_keys(ON)&_txlock=immediate"
+	raw, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(migrations[0]); err != nil { // migration 001 only
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("PRAGMA user_version = 1"); err != nil {
+		t.Fatal(err)
+	}
+	now := "2026-06-01T00:00:00Z"
+	for i := 1; i <= 3; i++ {
+		if _, err := raw.Exec(
+			`INSERT INTO tickets(key, project, title, created_at, updated_at) VALUES (?,?,?,?,?)`,
+			fmt.Sprintf("T-%d", i), "legacy", "old ticket", now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Stale per-project counter rows, as the old code would have left them.
+	if _, err := raw.Exec(`INSERT INTO counters(project, next) VALUES ('legacy', 4)`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	st, err := Open(path) // applies migration 002
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	defer st.Close()
+	tk, _, err := st.CreateTicket(context.Background(), CreateParams{Title: "new one", Project: "other"})
+	if err != nil {
+		t.Fatalf("create after migration should not collide: %v", err)
+	}
+	if tk.Key != "T-4" {
+		t.Fatalf("expected next key T-4 (max+1), got %s", tk.Key)
 	}
 }
 

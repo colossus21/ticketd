@@ -78,6 +78,17 @@ CREATE TRIGGER comments_ad AFTER DELETE ON comments BEGIN
     VALUES ('delete', old.id, old.body);
 END;
 `,
+	// 002 — consolidate per-project key counters into one global "T-" sequence.
+	// Databases created before the global-counter fix hold a counter row per
+	// project, each having started at 1; the new code reads a single global
+	// row (project=''). Seed that row from the highest existing key so new
+	// keys continue from max+1 instead of restarting at T-1 and colliding.
+	// On a fresh database MAX is NULL → seeds next=1.
+	`
+DELETE FROM counters;
+INSERT INTO counters(project, next)
+SELECT '', COALESCE(MAX(CAST(SUBSTR(key, 3) AS INTEGER)), 0) + 1 FROM tickets;
+`,
 }
 
 // migrate applies every migration above the current user_version inside a
