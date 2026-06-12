@@ -239,11 +239,11 @@ func TestConcurrentComments(t *testing.T) {
 	errs := make(chan error, n)
 	for i := 0; i < n; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			_, err := st.AddComment(ctx, "T-1", "agent", "concurrent note")
 			errs <- err
-		}(i)
+		}()
 	}
 	wg.Wait()
 	close(errs)

@@ -13,10 +13,10 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/colossus21/ticketd/internal/cli"
 	"github.com/colossus21/ticketd/internal/mcptools"
 	"github.com/colossus21/ticketd/internal/store"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Build metadata. version is the release; commit and date are injected at

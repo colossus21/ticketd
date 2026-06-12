@@ -1,0 +1,27 @@
+# golangci-lint v1 configuration. Pinned in CI to v1.64.x.
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - ineffassign   # unused assignments
+    - staticcheck   # broad correctness/style analysis
+    - unused        # unused code
+    - gofmt         # formatting
+    - goimports     # import grouping/ordering
+    - misspell      # common misspellings
+    - revive        # golint successor
+    - bodyclose     # unclosed HTTP response bodies
+    - errorlint     # error-wrapping correctness
+
+issues:
+  exclude-rules:
+    # Test files may ignore errors for brevity in setup/teardown.
+    - path: _test\.go
+      linters:
+        - errcheck
+  # Show all findings rather than the default capped summary.
+  max-issues-per-linter: 0
+  max-same-issues: 0

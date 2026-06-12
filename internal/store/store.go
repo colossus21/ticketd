@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/colossus21/ticketd/internal/domain"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // pure-Go SQLite driver registered for database/sql
 )
 
 // ErrNotFound is returned when a ticket key does not resolve.
@@ -95,7 +95,7 @@ func (s *Store) CreateTicket(ctx context.Context, p CreateParams) (t domain.Tick
 	if err != nil {
 		return domain.Ticket{}, false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Idempotency check against open tickets with the same exact title.
 	var existingKey string
@@ -190,7 +190,7 @@ func (s *Store) UpdateTicket(ctx context.Context, p UpdateParams) (domain.Ticket
 	if err != nil {
 		return domain.Ticket{}, "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	cur, err := getTicketTx(ctx, tx, p.Key)
 	if err != nil {
@@ -285,7 +285,7 @@ func (s *Store) AddComment(ctx context.Context, key, author, body string) (int, 
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	id, err := lookupID(ctx, tx, key)
 	if err != nil {
@@ -318,7 +318,7 @@ func (s *Store) GetTicketFull(ctx context.Context, key string) (domain.Ticket, e
 	if err != nil {
 		return domain.Ticket{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	return getTicketTx(ctx, tx, key)
 }
 

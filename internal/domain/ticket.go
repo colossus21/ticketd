@@ -104,7 +104,7 @@ type Subtask struct {
 // Link is a directed relationship to another ticket, with the far ticket's
 // key and title resolved for rendering.
 type Link struct {
-	Kind     LinkKind
-	ToKey    string
-	ToTitle  string
+	Kind    LinkKind
+	ToKey   string
+	ToTitle string
 }

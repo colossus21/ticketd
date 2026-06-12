@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/colossus21/ticketd/internal/store"
 	"github.com/colossus21/ticketd/internal/web"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // HTTP server timeouts. WriteTimeout is intentionally left unset: the MCP

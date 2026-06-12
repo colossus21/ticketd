@@ -104,12 +104,12 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("begin migration %d: %w", i+1, err)
 		}
 		if _, err := tx.Exec(migrations[i]); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %d: %w", i+1, err)
 		}
 		// PRAGMA cannot be parameterized; the value is an int we control.
 		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("bump user_version to %d: %w", i+1, err)
 		}
 		if err := tx.Commit(); err != nil {

@@ -84,7 +84,7 @@ func ValidateTransition(key string, from, to Status) error {
 	}
 	if from.IsTerminal() {
 		return fmt.Errorf(
-			"cannot move %s from %s to %s: %s is terminal. Create a new ticket instead.",
+			"cannot move %s from %s to %s: %s is terminal — create a new ticket instead",
 			key, from, to, from)
 	}
 	legal := transitions[from]

@@ -8,7 +8,7 @@ import (
 
 func TestBearerAuth(t *testing.T) {
 	var reached bool
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		reached = true
 		w.WriteHeader(http.StatusOK)
 	})
@@ -60,7 +60,7 @@ func TestBearerAuth(t *testing.T) {
 
 func TestRootRouter(t *testing.T) {
 	var reached bool
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		reached = true
 		w.WriteHeader(http.StatusOK)
 	})
