@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"syscall"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/colossus21/ticketd/internal/cli"
@@ -59,7 +61,11 @@ func main() {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "tickets", Version: version}, nil)
 	mcptools.Register(srv, st)
 
-	ctx := context.Background()
+	// Cancel the root context on SIGINT/SIGTERM so both transports shut down
+	// cleanly (stdio's Run returns; HTTP drains in-flight requests).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	switch *transport {
 	case "stdio":
 		slog.Info("ticketd starting", "transport", "stdio", "db", *dbPath)

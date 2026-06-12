@@ -57,3 +57,45 @@ func TestBearerAuth(t *testing.T) {
 		}
 	})
 }
+
+func TestRootRouter(t *testing.T) {
+	var reached bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	})
+	h := rootRouter(next)
+
+	t.Run("GET / redirects to board", func(t *testing.T) {
+		reached = false
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/board" {
+			t.Fatalf("GET / should 302 to /board; code=%d loc=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		if reached {
+			t.Fatal("MCP handler should not be reached for browser GET /")
+		}
+	})
+
+	t.Run("POST / passes through to MCP", func(t *testing.T) {
+		reached = false
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", nil))
+		if !reached {
+			t.Fatal("POST / should reach the MCP handler")
+		}
+	})
+}
+
+func TestRecoverMiddleware(t *testing.T) {
+	panicky := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	rec := httptest.NewRecorder()
+	// Should not propagate the panic.
+	recoverMiddleware(panicky).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("panic should become 500, got %d", rec.Code)
+	}
+}
