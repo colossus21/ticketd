@@ -1,5 +1,12 @@
 # ticketd
 
+[![ci](https://github.com/colossus21/ticketd/actions/workflows/ci.yml/badge.svg)](https://github.com/colossus21/ticketd/actions/workflows/ci.yml)
+[![codeql](https://github.com/colossus21/ticketd/actions/workflows/codeql.yml/badge.svg)](https://github.com/colossus21/ticketd/actions/workflows/codeql.yml)
+[![go report card](https://goreportcard.com/badge/github.com/colossus21/ticketd)](https://goreportcard.com/report/github.com/colossus21/ticketd)
+[![go version](https://img.shields.io/github/go-mod/go-version/colossus21/ticketd)](go.mod)
+[![release](https://img.shields.io/github/v/release/colossus21/ticketd?sort=semver)](https://github.com/colossus21/ticketd/releases)
+[![license](https://img.shields.io/github/license/colossus21/ticketd)](LICENSE)
+
 An agent-native ticket tracker exposed over the **Model Context Protocol (MCP)**.
 
 `ticketd` is durable external memory for AI coding agents (primarily Claude
