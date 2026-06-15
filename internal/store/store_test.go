@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -255,6 +256,103 @@ func TestConcurrentComments(t *testing.T) {
 	got, _ := st.GetTicketFull(ctx, "T-1")
 	if len(got.Comments) != n {
 		t.Fatalf("expected %d comments, got %d", n, len(got.Comments))
+	}
+}
+
+func TestClaimContention(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "shared work"})
+
+	if _, err := st.ClaimTicket(ctx, "T-1", "agent-A", false); err != nil {
+		t.Fatalf("first claim should succeed: %v", err)
+	}
+	// A second agent cannot claim an active claim.
+	_, err := st.ClaimTicket(ctx, "T-1", "agent-B", false)
+	if !errors.Is(err, ErrClaimed) {
+		t.Fatalf("expected ErrClaimed for second agent, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "agent-A") || !strings.Contains(err.Error(), "force=true") {
+		t.Fatalf("contention error should name holder + suggest force: %v", err)
+	}
+	// Re-claim by the same agent renews (no error).
+	if _, err := st.ClaimTicket(ctx, "T-1", "agent-A", false); err != nil {
+		t.Fatalf("re-claim by holder should renew: %v", err)
+	}
+	// Force lets another agent take over.
+	tk, err := st.ClaimTicket(ctx, "T-1", "agent-B", true)
+	if err != nil || tk.ClaimedBy != "agent-B" {
+		t.Fatalf("force takeover failed: %v (holder=%s)", err, tk.ClaimedBy)
+	}
+}
+
+func TestClaimExpiry(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	restore := now
+	now = func() time.Time { return base }
+	defer func() { now = restore }()
+
+	st.CreateTicket(ctx, CreateParams{Title: "work"})
+	if _, err := st.ClaimTicket(ctx, "T-1", "agent-A", false); err != nil {
+		t.Fatal(err)
+	}
+	// Past the TTL, another agent may claim without force.
+	now = func() time.Time { return base.Add(domain.ClaimTTL + time.Minute) }
+	tk, err := st.ClaimTicket(ctx, "T-1", "agent-B", false)
+	if err != nil || tk.ClaimedBy != "agent-B" {
+		t.Fatalf("expired claim should be takeable: %v (holder=%s)", err, tk.ClaimedBy)
+	}
+}
+
+func TestReleaseAndAutoRelease(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "work"})
+	st.ClaimTicket(ctx, "T-1", "agent-A", false)
+
+	// Another agent can't release without force.
+	if _, err := st.ReleaseClaim(ctx, "T-1", "agent-B", false); !errors.Is(err, ErrClaimed) {
+		t.Fatalf("non-holder release should fail: %v", err)
+	}
+	// Holder releases cleanly.
+	tk, err := st.ReleaseClaim(ctx, "T-1", "agent-A", false)
+	if err != nil || tk.ClaimedBy != "" {
+		t.Fatalf("holder release failed: %v (holder=%q)", err, tk.ClaimedBy)
+	}
+
+	// Claim again, then move to done → claim auto-released.
+	st.ClaimTicket(ctx, "T-1", "agent-A", false)
+	ip, done := domain.InProgress, domain.Done
+	st.UpdateTicket(ctx, UpdateParams{Key: "T-1", Status: &ip})
+	got, _, err := st.UpdateTicket(ctx, UpdateParams{Key: "T-1", Status: &done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClaimedBy != "" {
+		t.Fatalf("reaching done should auto-release the claim, got holder %q", got.ClaimedBy)
+	}
+}
+
+func TestContextHidesClaimedTodos(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "free one", Priority: domain.High})
+	st.CreateTicket(ctx, CreateParams{Title: "taken one", Priority: domain.High})
+	st.ClaimTicket(ctx, "T-2", "agent-A", false)
+
+	rep, err := st.ContextReport(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.ClaimedN != 1 {
+		t.Fatalf("expected 1 claimed todo hidden, got %d", rep.ClaimedN)
+	}
+	for _, ct := range rep.NextUp {
+		if ct.Key == "T-2" {
+			t.Fatal("actively-claimed T-2 should not appear in NextUp")
+		}
 	}
 }
 

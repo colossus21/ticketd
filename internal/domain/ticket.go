@@ -51,6 +51,16 @@ func ParsePriority(s string) (Priority, error) {
 	return Normal, fmt.Errorf("unknown priority %q: use one of critical, high, normal, low", s)
 }
 
+// ClaimTTL is how long a soft claim stays active without renewal. After this,
+// the claim is considered stale and another agent may take the ticket — so a
+// crashed or abandoned agent never blocks work indefinitely.
+const ClaimTTL = 30 * time.Minute
+
+// ClaimActiveAt reports whether the claim is held and not yet expired at t.
+func (k Ticket) ClaimActiveAt(t time.Time) bool {
+	return k.ClaimedBy != "" && !k.ClaimedAt.IsZero() && t.Sub(k.ClaimedAt) < ClaimTTL
+}
+
 // LinkKind enumerates the relationship types between tickets.
 type LinkKind string
 
@@ -74,6 +84,11 @@ type Ticket struct {
 	Labels      []string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// ClaimedBy is the advisory owner (agent id); empty when unclaimed.
+	// ClaimedAt drives TTL expiry of the soft claim.
+	ClaimedBy string
+	ClaimedAt time.Time
 
 	// Populated only by GetTicketFull / context queries.
 	Comments []Comment

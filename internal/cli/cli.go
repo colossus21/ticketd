@@ -47,6 +47,8 @@ func Run(args []string, dbPath string) int {
 		return cmdShow(ctx, st, args[1:])
 	case "comment":
 		return cmdComment(ctx, st, args[1:])
+	case "claim":
+		return cmdClaim(ctx, st, args[1:])
 	case "context":
 		return cmdContext(ctx, st, args[1:])
 	case "backup":
@@ -72,6 +74,7 @@ Usage:
   ticketd ls [--status S] [--project P]   list tickets
   ticketd show T-42                show a ticket with its full worklog
   ticketd comment T-42 "text"      append a worklog comment (author = $USER)
+  ticketd claim T-42 [--agent A] [--release] [--force]   soft-claim a ticket
   ticketd context [--project P]    print the working-state report
   ticketd backup [--dir D]         write a timestamped VACUUM INTO copy
 
@@ -177,6 +180,42 @@ func cmdComment(ctx context.Context, st *store.Store, args []string) int {
 		return 1
 	}
 	fmt.Printf("Comment added to %s (%d total).\n", args[0], n)
+	return 0
+}
+
+func cmdClaim(ctx context.Context, st *store.Store, args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticketd claim T-42 [--agent A] [--release] [--force]")
+		return 2
+	}
+	key := args[0]
+	fs := flag.NewFlagSet("claim", flag.ContinueOnError)
+	agent := fs.String("agent", "", "agent id (default $USER, else 'agent')")
+	release := fs.Bool("release", false, "release the claim instead of taking it")
+	force := fs.Bool("force", false, "take over (or release) another agent's claim")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	id := *agent
+	if id == "" {
+		if u, err := user.Current(); err == nil && u.Username != "" {
+			id = u.Username
+		}
+	}
+	var (
+		t   domain.Ticket
+		err error
+	)
+	if *release {
+		t, err = st.ReleaseClaim(ctx, key, id, *force)
+	} else {
+		t, err = st.ClaimTicket(ctx, key, id, *force)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Print(mcptools.Ticket(t, false))
 	return 0
 }
 

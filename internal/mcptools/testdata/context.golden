@@ -8,7 +8,7 @@ Last activity 2026-06-11 10:02:
 ## Blocked (1)
 - T-42 → blocked on T-21 (Home Assistant token setup)
 
-## Next up (top 5 todo by priority)
+## Next up (top 5 unclaimed todo by priority)
 1. T-44 [high] Subscribe to zigbee2mqtt/+  (subtask of T-42)
 2. T-45 [normal] Expose get_sensor MCP tool
 

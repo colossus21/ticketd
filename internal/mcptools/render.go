@@ -47,6 +47,9 @@ func Ticket(t domain.Ticket, existed bool) string {
 		b.WriteString(strings.Join(meta, " · ") + "\n")
 	}
 	fmt.Fprintf(&b, "created: %s · updated: %s\n", displayDate(t.CreatedAt), displayDate(t.UpdatedAt))
+	if t.ClaimActiveAt(now()) {
+		fmt.Fprintf(&b, "claimed by: %s (since %s)\n", t.ClaimedBy, displayTime(t.ClaimedAt))
+	}
 
 	if strings.TrimSpace(t.Description) != "" {
 		b.WriteString("\n" + strings.TrimSpace(t.Description) + "\n")
@@ -157,7 +160,11 @@ func Context(rep store.ContextReport, today string) string {
 		if ct.Stale {
 			stale = fmt.Sprintf(" ⚠ STALE — untouched %d days", ct.StaleDays)
 		}
-		fmt.Fprintf(&b, "### %s: %s [%s]%s\n", ct.Key, ct.Title, ct.Priority, stale)
+		claim := ""
+		if ct.ClaimedBy != "" {
+			claim = fmt.Sprintf(" · claimed by %s", ct.ClaimedBy)
+		}
+		fmt.Fprintf(&b, "### %s: %s [%s]%s%s\n", ct.Key, ct.Title, ct.Priority, stale, claim)
 		if ct.LastComment != "" {
 			fmt.Fprintf(&b, "Last activity %s:\n> %s\n", displayTime(parse(ct.LastActivity)), firstLine(ct.LastComment))
 		} else {
@@ -179,9 +186,13 @@ func Context(rep store.ContextReport, today string) string {
 		}
 	}
 
-	b.WriteString("\n## Next up (top 5 todo by priority)\n")
+	b.WriteString("\n## Next up (top 5 unclaimed todo by priority)\n")
 	if len(rep.NextUp) == 0 {
-		b.WriteString("_Todo queue is empty._\n")
+		if rep.ClaimedN > 0 {
+			b.WriteString("_All todo tickets are currently claimed by other agents._\n")
+		} else {
+			b.WriteString("_Todo queue is empty._\n")
+		}
 	}
 	for i, ct := range rep.NextUp {
 		suffix := ""
@@ -191,8 +202,12 @@ func Context(rep store.ContextReport, today string) string {
 		fmt.Fprintf(&b, "%d. %s [%s] %s%s\n", i+1, ct.Key, ct.Priority, ct.Title, suffix)
 	}
 
-	fmt.Fprintf(&b, "\n(%d ticket%s in backlog · %d done · use search_tickets to dig deeper)\n",
-		rep.BacklogN, plural(rep.BacklogN), rep.DoneN)
+	claimed := ""
+	if rep.ClaimedN > 0 {
+		claimed = fmt.Sprintf(" · %d todo claimed by other agents", rep.ClaimedN)
+	}
+	fmt.Fprintf(&b, "\n(%d ticket%s in backlog · %d done%s · use search_tickets to dig deeper)\n",
+		rep.BacklogN, plural(rep.BacklogN), rep.DoneN, claimed)
 	return b.String()
 }
 

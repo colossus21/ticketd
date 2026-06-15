@@ -7,6 +7,7 @@ package mcptools
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/colossus21/ticketd/internal/domain"
@@ -17,7 +18,7 @@ import (
 // now is overridable in tests for deterministic context dates.
 var now = func() time.Time { return time.Now() }
 
-// Register wires all six tools onto the server.
+// Register wires the tools onto the server.
 func Register(s *mcp.Server, st *store.Store) {
 	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: createDesc}, handleCreate(st))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_ticket", Description: updateDesc}, handleUpdate(st))
@@ -25,6 +26,7 @@ func Register(s *mcp.Server, st *store.Store) {
 	mcp.AddTool(s, &mcp.Tool{Name: "get_ticket", Description: getDesc}, handleGet(st))
 	mcp.AddTool(s, &mcp.Tool{Name: "search_tickets", Description: searchDesc}, handleSearch(st))
 	mcp.AddTool(s, &mcp.Tool{Name: "get_context", Description: contextDesc}, handleContext(st))
+	mcp.AddTool(s, &mcp.Tool{Name: "claim_ticket", Description: claimDesc}, handleClaim(st))
 }
 
 // textResult builds a successful Markdown tool result.
@@ -53,6 +55,8 @@ const getDesc = "Fetch a ticket with its full worklog, subtasks, and links in on
 const searchDesc = "Full-text search across ticket titles, descriptions, and comments, with optional status/project/label filters. Use before creating a ticket to check whether one already exists, and to find past decisions ('how did we handle X')."
 
 const contextDesc = "Get a working-state report: everything in progress, everything blocked (with reasons), and the top of the todo queue. Call this at the start of every session before deciding what to do."
+
+const claimDesc = "Soft-claim a ticket before working it so other agents skip it. Call this right after get_context when you pick a ticket, passing a unique 'agent' id (distinct agents MUST use distinct ids). Claims are advisory and expire after 30 minutes, so a crashed agent never blocks work; re-claiming a ticket you hold renews it. If another agent holds it, you get an error naming the holder — pick a different ticket. Pass release=true when you stop without finishing; claims auto-release when a ticket moves to done or wont_do."
 
 // --- input types ---
 
@@ -96,6 +100,13 @@ type SearchTicketsInput struct {
 
 type GetContextInput struct {
 	Project string `json:"project,omitempty" jsonschema:"omit for all projects"`
+}
+
+type ClaimTicketInput struct {
+	Key     string `json:"key" jsonschema:"required, e.g. T-42"`
+	Agent   string `json:"agent,omitempty" jsonschema:"your unique agent id; distinct agents MUST use distinct ids for the soft lock to work. default 'agent'"`
+	Release bool   `json:"release,omitempty" jsonschema:"release your claim instead of taking it"`
+	Force   bool   `json:"force,omitempty" jsonschema:"take over (or release) a claim held by another agent"`
 }
 
 // --- handlers ---
@@ -209,5 +220,30 @@ func handleContext(st *store.Store) mcp.ToolHandlerFor[GetContextInput, any] {
 			return errResult(err.Error()), nil, nil
 		}
 		return textResult(Context(rep, now().Local().Format("2006-01-02"))), nil, nil
+	}
+}
+
+func handleClaim(st *store.Store) mcp.ToolHandlerFor[ClaimTicketInput, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in ClaimTicketInput) (*mcp.CallToolResult, any, error) {
+		var (
+			t      domain.Ticket
+			err    error
+			action string
+		)
+		if in.Release {
+			t, err = st.ReleaseClaim(ctx, in.Key, in.Agent, in.Force)
+			action = "Released claim on"
+		} else {
+			t, err = st.ClaimTicket(ctx, in.Key, in.Agent, in.Force)
+			action = "Claimed"
+		}
+		if err != nil {
+			return errResult(err.Error()), nil, nil
+		}
+		who := t.ClaimedBy
+		if who == "" {
+			who = "nobody"
+		}
+		return textResult(fmt.Sprintf("%s %s (now held by: %s)\n\n%s", action, t.Key, who, Ticket(t, false))), nil, nil
 	}
 }

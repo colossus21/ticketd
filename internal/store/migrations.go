@@ -89,6 +89,12 @@ DELETE FROM counters;
 INSERT INTO counters(project, next)
 SELECT '', COALESCE(MAX(CAST(SUBSTR(key, 3) AS INTEGER)), 0) + 1 FROM tickets;
 `,
+	// 003 — soft claims: an advisory owner so concurrent agents don't pick the
+	// same ticket. claimed_at (RFC3339 UTC) drives TTL expiry; empty = unclaimed.
+	`
+ALTER TABLE tickets ADD COLUMN claimed_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN claimed_at TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // migrate applies every migration above the current user_version inside a

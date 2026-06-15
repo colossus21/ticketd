@@ -112,6 +112,35 @@ func TestEndToEndFlow(t *testing.T) {
 	}
 }
 
+func TestClaimToolContention(t *testing.T) {
+	cs := newClientServer(t)
+	callText(t, cs, "create_ticket", CreateTicketInput{Title: "shared", Project: "p"})
+
+	out, isErr := callText(t, cs, "claim_ticket", ClaimTicketInput{Key: "T-1", Agent: "agent-A"})
+	if isErr {
+		t.Fatalf("first claim should succeed: %s", out)
+	}
+	if !strings.Contains(out, "Claimed T-1") || !strings.Contains(out, "agent-A") {
+		t.Fatalf("unexpected claim output:\n%s", out)
+	}
+
+	// Second agent is rejected with a readable, instructive error.
+	out, isErr = callText(t, cs, "claim_ticket", ClaimTicketInput{Key: "T-1", Agent: "agent-B"})
+	if !isErr {
+		t.Fatalf("second agent's claim should be flagged as error; got:\n%s", out)
+	}
+	if !strings.Contains(out, "agent-A") || !strings.Contains(out, "force=true") {
+		t.Fatalf("contention error should name holder + suggest force:\n%s", out)
+	}
+
+	// Holder releases; then agent-B can claim.
+	callText(t, cs, "claim_ticket", ClaimTicketInput{Key: "T-1", Agent: "agent-A", Release: true})
+	out, isErr = callText(t, cs, "claim_ticket", ClaimTicketInput{Key: "T-1", Agent: "agent-B"})
+	if isErr || !strings.Contains(out, "held by: agent-B") {
+		t.Fatalf("agent-B should claim after release:\n%s", out)
+	}
+}
+
 func TestNotFoundIsReadableError(t *testing.T) {
 	cs := newClientServer(t)
 	out, isErr := callText(t, cs, "get_ticket", GetTicketInput{Key: "T-404"})

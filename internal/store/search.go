@@ -237,6 +237,7 @@ type ContextReport struct {
 	NextUp     []ContextTicket
 	BacklogN   int
 	DoneN      int
+	ClaimedN   int // todo tickets hidden from NextUp because actively claimed
 }
 
 // ContextTicket is a ticket plus its most recent worklog excerpt.
@@ -248,8 +249,9 @@ type ContextTicket struct {
 	ParentKey    string
 	LastActivity string // RFC3339-ish display time of last comment
 	LastComment  string
-	Stale        bool // in_progress/in_review and untouched beyond StaleAfter
-	StaleDays    int  // whole days since updated_at, when Stale
+	Stale        bool   // in_progress/in_review and untouched beyond StaleAfter
+	StaleDays    int    // whole days since updated_at, when Stale
+	ClaimedBy    string // advisory owner, if any (shown for in-progress tickets)
 }
 
 // StaleAfter is how long an in-progress ticket may go untouched before
@@ -276,7 +278,7 @@ func (s *Store) ContextReport(ctx context.Context, project string) (ContextRepor
 
 	// In-progress + in-review tickets, with last comment.
 	ipRows, err := s.db.QueryContext(ctx,
-		`SELECT key, title, priority, status, updated_at FROM tickets
+		`SELECT key, title, priority, status, updated_at, claimed_by, claimed_at FROM tickets
 		 WHERE status IN ('in_progress','in_review')`+projClause+`
 		 ORDER BY priority ASC, updated_at DESC`, projArg...)
 	if err != nil {
@@ -286,9 +288,9 @@ func (s *Store) ContextReport(ctx context.Context, project string) (ContextRepor
 	var ipKeys []ContextTicket
 	for ipRows.Next() {
 		var ct ContextTicket
-		var status, updatedAt string
+		var status, updatedAt, claimedBy, claimedAt string
 		var pr int
-		if err := ipRows.Scan(&ct.Key, &ct.Title, &pr, &status, &updatedAt); err != nil {
+		if err := ipRows.Scan(&ct.Key, &ct.Title, &pr, &status, &updatedAt, &claimedBy, &claimedAt); err != nil {
 			ipRows.Close()
 			return rep, err
 		}
@@ -297,6 +299,10 @@ func (s *Store) ContextReport(ctx context.Context, project string) (ContextRepor
 		if u := parseTime(updatedAt); !u.IsZero() && u.Before(cutoff) {
 			ct.Stale = true
 			ct.StaleDays = int(now().Sub(u).Hours() / 24)
+		}
+		// Show the holder only while the claim is still active.
+		if (domain.Ticket{ClaimedBy: claimedBy, ClaimedAt: parseTime(claimedAt)}).ClaimActiveAt(now()) {
+			ct.ClaimedBy = claimedBy
 		}
 		ipKeys = append(ipKeys, ct)
 	}
@@ -365,22 +371,34 @@ func (s *Store) ContextReport(ctx context.Context, project string) (ContextRepor
 		rep.Blocked = append(rep.Blocked, *bt)
 	}
 
-	// Next up: top todo tickets by priority.
+	// Next up: top todo tickets by priority, hiding ones an agent has actively
+	// claimed so a second agent's get_context only suggests pickable work.
+	// TTL expiry is evaluated in Go, so over-fetch and trim to 5 survivors.
 	nRows, err := s.db.QueryContext(ctx,
 		`SELECT t.key, t.title, t.priority,
-		        (SELECT p.key FROM tickets p WHERE p.id = t.parent_id)
+		        (SELECT p.key FROM tickets p WHERE p.id = t.parent_id),
+		        t.claimed_by, t.claimed_at
 		 FROM tickets t WHERE t.status = 'todo'`+projClause+`
-		 ORDER BY t.priority ASC, t.updated_at DESC LIMIT 5`, projArg...)
+		 ORDER BY t.priority ASC, t.updated_at DESC LIMIT 50`, projArg...)
 	if err != nil {
 		return rep, err
 	}
+	now := now()
 	for nRows.Next() {
 		var ct ContextTicket
 		var pr int
 		var parent sql.NullString
-		if err := nRows.Scan(&ct.Key, &ct.Title, &pr, &parent); err != nil {
+		var claimedBy, claimedAt string
+		if err := nRows.Scan(&ct.Key, &ct.Title, &pr, &parent, &claimedBy, &claimedAt); err != nil {
 			nRows.Close()
 			return rep, err
+		}
+		if (domain.Ticket{ClaimedBy: claimedBy, ClaimedAt: parseTime(claimedAt)}).ClaimActiveAt(now) {
+			rep.ClaimedN++
+			continue
+		}
+		if len(rep.NextUp) >= 5 {
+			continue
 		}
 		ct.Priority = domain.Priority(pr)
 		ct.Status = domain.Todo

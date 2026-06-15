@@ -208,6 +208,11 @@ func (s *Store) UpdateTicket(ctx context.Context, p UpdateParams) (domain.Ticket
 		sets = append(sets, "status = ?")
 		args = append(args, string(*p.Status))
 		changes = append(changes, fmt.Sprintf("status %s→%s", cur.Status, *p.Status))
+		// Reaching a terminal state ends the work, so drop any soft claim.
+		if p.Status.IsTerminal() && cur.ClaimedBy != "" {
+			sets = append(sets, "claimed_by = ''", "claimed_at = ''")
+			changes = append(changes, "released claim")
+		}
 	}
 	if p.Priority != nil && *p.Priority != cur.Priority {
 		sets = append(sets, "priority = ?")
@@ -312,6 +317,91 @@ func (s *Store) AddComment(ctx context.Context, key, author, body string) (int, 
 	return count, nil
 }
 
+// ErrClaimed is returned when a ticket is actively claimed by another agent.
+var ErrClaimed = errors.New("claimed by another agent")
+
+// ClaimTicket places a soft, advisory claim so concurrent agents skip the
+// ticket. The whole transaction is the guard: two agents racing to claim the
+// same ticket serialize, and only the first wins. A claim older than
+// domain.ClaimTTL is treated as expired and may be taken. Re-claiming a ticket
+// you already hold renews it. force=true takes over an active claim. On
+// contention it returns ErrClaimed wrapped with an instructive message.
+func (s *Store) ClaimTicket(ctx context.Context, key, agent string, force bool) (domain.Ticket, error) {
+	if agent == "" {
+		agent = "agent"
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	cur, err := getTicketTx(ctx, tx, key)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	t := now()
+	if cur.ClaimActiveAt(t) && cur.ClaimedBy != agent && !force {
+		expires := cur.ClaimedAt.Add(domain.ClaimTTL)
+		return domain.Ticket{}, fmt.Errorf(
+			"%s is claimed by %q since %s (expires %s): %w — pick another ticket from get_context, or pass force=true to take it over",
+			cur.Key, cur.ClaimedBy, rfc3339(cur.ClaimedAt), rfc3339(expires), ErrClaimed)
+	}
+
+	ts := rfc3339(t)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE tickets SET claimed_by = ?, claimed_at = ? WHERE id = ?`,
+		agent, ts, cur.ID); err != nil {
+		return domain.Ticket{}, err
+	}
+	full, err := getTicketTx(ctx, tx, key)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Ticket{}, err
+	}
+	return full, nil
+}
+
+// ReleaseClaim drops a soft claim. Without force, only the holding agent may
+// release it; force releases regardless. Releasing an unclaimed ticket is a
+// no-op.
+func (s *Store) ReleaseClaim(ctx context.Context, key, agent string, force bool) (domain.Ticket, error) {
+	if agent == "" {
+		agent = "agent"
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	cur, err := getTicketTx(ctx, tx, key)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if cur.ClaimedBy != "" && cur.ClaimedBy != agent && !force {
+		return domain.Ticket{}, fmt.Errorf(
+			"%s is claimed by %q, not %q: %w — pass force=true to release it anyway",
+			cur.Key, cur.ClaimedBy, agent, ErrClaimed)
+	}
+	if cur.ClaimedBy != "" {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tickets SET claimed_by = '', claimed_at = '' WHERE id = ?`, cur.ID); err != nil {
+			return domain.Ticket{}, err
+		}
+	}
+	full, err := getTicketTx(ctx, tx, key)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Ticket{}, err
+	}
+	return full, nil
+}
+
 // GetTicketFull returns a ticket with its comments, subtasks, and links.
 func (s *Store) GetTicketFull(ctx context.Context, key string) (domain.Ticket, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -328,7 +418,7 @@ func (s *Store) GetTicketFull(ctx context.Context, key string) (domain.Ticket, e
 func (s *Store) AllTickets(ctx context.Context, project string) ([]domain.Ticket, error) {
 	q := `SELECT t.key, t.project, t.title, t.status, t.priority,
 	             (SELECT p.key FROM tickets p WHERE p.id = t.parent_id),
-	             t.labels, t.updated_at,
+	             t.labels, t.updated_at, t.claimed_by, t.claimed_at,
 	             (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id)
 	      FROM tickets t`
 	var args []any
@@ -347,16 +437,17 @@ func (s *Store) AllTickets(ctx context.Context, project string) ([]domain.Ticket
 	var out []domain.Ticket
 	for rows.Next() {
 		var t domain.Ticket
-		var status, labelsJSON, updatedAt string
+		var status, labelsJSON, updatedAt, claimedAt string
 		var parent sql.NullString
 		var priority, commentCount int
 		if err := rows.Scan(&t.Key, &t.Project, &t.Title, &status, &priority,
-			&parent, &labelsJSON, &updatedAt, &commentCount); err != nil {
+			&parent, &labelsJSON, &updatedAt, &t.ClaimedBy, &claimedAt, &commentCount); err != nil {
 			return nil, err
 		}
 		t.Status = domain.Status(status)
 		t.Priority = domain.Priority(priority)
 		t.UpdatedAt = parseTime(updatedAt)
+		t.ClaimedAt = parseTime(claimedAt)
 		if parent.Valid {
 			t.ParentKey = parent.String
 		}
@@ -411,14 +502,14 @@ func addLink(ctx context.Context, q queryer, fromID int64, toKey string, kind do
 func getTicketTx(ctx context.Context, q queryer, key string) (domain.Ticket, error) {
 	var t domain.Ticket
 	var parentID sql.NullInt64
-	var labelsJSON, createdAt, updatedAt, status string
+	var labelsJSON, createdAt, updatedAt, status, claimedAt string
 	var priority int
 
 	err := q.QueryRowContext(ctx,
-		`SELECT id, key, project, title, description, status, priority, parent_id, labels, created_at, updated_at
+		`SELECT id, key, project, title, description, status, priority, parent_id, labels, created_at, updated_at, claimed_by, claimed_at
 		 FROM tickets WHERE key = ?`, key).
 		Scan(&t.ID, &t.Key, &t.Project, &t.Title, &t.Description, &status, &priority,
-			&parentID, &labelsJSON, &createdAt, &updatedAt)
+			&parentID, &labelsJSON, &createdAt, &updatedAt, &t.ClaimedBy, &claimedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Ticket{}, fmt.Errorf("ticket %s: %w", key, ErrNotFound)
 	}
@@ -429,6 +520,7 @@ func getTicketTx(ctx context.Context, q queryer, key string) (domain.Ticket, err
 	t.Priority = domain.Priority(priority)
 	t.CreatedAt = parseTime(createdAt)
 	t.UpdatedAt = parseTime(updatedAt)
+	t.ClaimedAt = parseTime(claimedAt)
 	_ = json.Unmarshal([]byte(labelsJSON), &t.Labels)
 	if t.Labels == nil {
 		t.Labels = []string{}

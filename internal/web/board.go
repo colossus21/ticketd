@@ -66,6 +66,14 @@ func BoardHandler(st *store.Store) http.Handler {
 
 var boardTmpl = template.Must(template.New("board").Funcs(template.FuncMap{
 	"prio": func(p domain.Priority) string { return p.String() },
+	// claim returns the active claim holder for a card, or "" if unclaimed
+	// or the claim has expired.
+	"claim": func(t domain.Ticket) string {
+		if t.ClaimActiveAt(time.Now()) {
+			return t.ClaimedBy
+		}
+		return ""
+	},
 }).Parse(boardHTML))
 
 const boardHTML = `<!doctype html>
@@ -89,6 +97,7 @@ const boardHTML = `<!doctype html>
   .card .title { margin: 2px 0 6px; }
   .tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; color: #8889; }
   .tag { background: #8882; border-radius: 4px; padding: 1px 5px; }
+  .tag.claim { background: #f5a62333; }
   .p-critical { border-left: 3px solid #e5484d; }
   .p-high { border-left: 3px solid #f5a623; }
   .p-normal { border-left: 3px solid #8884; }
@@ -112,6 +121,7 @@ const boardHTML = `<!doctype html>
       <div class="title">{{.Title}}</div>
       <div class="tags">
         <span class="tag">{{prio .Priority}}</span>
+        {{- if claim .}}<span class="tag claim">⛏ {{claim .}}</span>{{end}}
         {{- if .CommentCount}}<span class="tag">{{.CommentCount}} 💬</span>{{end}}
         {{- range .Labels}}<span class="tag">{{.}}</span>{{end}}
       </div>
