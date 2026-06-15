@@ -74,8 +74,8 @@ type UpdateTicketInput struct {
 	Status      string   `json:"status,omitempty"`
 	Priority    string   `json:"priority,omitempty"`
 	Title       string   `json:"title,omitempty"`
-	Description string   `json:"description,omitempty" jsonschema:"replaces description; prefer add_comment for progress notes"`
-	Labels      []string `json:"labels,omitempty" jsonschema:"replaces the full label set"`
+	Description *string  `json:"description,omitempty" jsonschema:"replaces description; pass \"\" to clear it; prefer add_comment for progress notes"`
+	Labels      []string `json:"labels,omitempty" jsonschema:"replaces the full label set; pass [] to clear"`
 	LinkBlocks  string   `json:"link_blocks,omitempty" jsonschema:"key of a ticket this one blocks"`
 	LinkRelates string   `json:"link_relates,omitempty" jsonschema:"key of a related ticket"`
 }
@@ -156,9 +156,8 @@ func handleUpdate(st *store.Store) mcp.ToolHandlerFor[UpdateTicketInput, any] {
 		if in.Title != "" {
 			p.Title = &in.Title
 		}
-		if in.Description != "" {
-			p.Description = &in.Description
-		}
+		// Description is a pointer: nil = unchanged, "" = clear.
+		p.Description = in.Description
 		if in.Labels != nil {
 			p.Labels = &in.Labels
 		}

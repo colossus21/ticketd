@@ -15,7 +15,7 @@ decisions made, files touched, approaches tried and rejected, open questions.
 The worklog is the primary artifact, not the status field.
 
 - **Single static Go binary, single SQLite file.** Zero infrastructure, no CGO.
-- **Six MCP tools** over stdio (and HTTP). All outputs are Markdown for model
+- **Seven MCP tools** over stdio (and HTTP). All outputs are Markdown for model
   consumption, not JSON.
 - **A `get_context` tool** that gives an agent full situational awareness in one
   call — the core loop of the product.
@@ -75,6 +75,17 @@ Then paste [`CLAUDE.md.example`](CLAUDE.md.example) into your project's
 | `add_comment` | Append a worklog entry — the memory a future session resumes from. |
 | `get_ticket` | Full ticket with worklog, subtasks, and links in one call. |
 | `search_tickets` | Full-text search over titles, descriptions, and comments. |
+| `claim_ticket` | Soft-claim a ticket so concurrent agents skip it (advisory, 30-min TTL). |
+
+## Multi-agent coordination
+
+When several agents share one database, `claim_ticket` keeps them off each
+other's work. Each agent passes a unique `agent` id; the claim is taken inside a
+single transaction, so two agents racing for the same ticket serialize and only
+one wins — the other gets an error naming the holder and picks something else.
+`get_context` hides actively-claimed todos from "Next up", so agents rarely even
+collide. Claims are **advisory** and expire after 30 minutes (so a crashed agent
+never blocks work), and auto-release when a ticket reaches `done`/`wont_do`.
 
 ## CLI (human inspection layer)
 
@@ -83,6 +94,7 @@ ticketd create "Add metrics endpoint" --priority high --label obs   # create a t
 ticketd ls --status in_progress      # list tickets
 ticketd show T-42                     # full ticket + worklog
 ticketd comment T-42 "looks good"     # append a comment (author = $USER)
+ticketd claim T-42 --agent alice      # soft-claim (--release / --force)
 ticketd context --project voice       # the working-state report
 ticketd backup --dir ~/backups        # timestamped VACUUM INTO copy
 ticketd --version                     # version, commit, build date

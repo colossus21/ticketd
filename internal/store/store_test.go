@@ -356,6 +356,30 @@ func TestContextHidesClaimedTodos(t *testing.T) {
 	}
 }
 
+func TestUpdateClearsDescription(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	st.CreateTicket(ctx, CreateParams{Title: "work", Description: "original goal"})
+
+	blank := ""
+	got, summary, err := st.UpdateTicket(ctx, UpdateParams{Key: "T-1", Description: &blank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Description != "" {
+		t.Fatalf("description should be cleared, got %q", got.Description)
+	}
+	if !strings.Contains(summary, "description") {
+		t.Fatalf("summary should note the description change: %q", summary)
+	}
+
+	// A nil description leaves it unchanged.
+	got2, _, _ := st.UpdateTicket(ctx, UpdateParams{Key: "T-1", Description: nil})
+	if got2.Description != "" {
+		t.Fatalf("nil description should leave it unchanged (empty), got %q", got2.Description)
+	}
+}
+
 func TestNotFound(t *testing.T) {
 	st := newTestStore(t)
 	_, err := st.GetTicketFull(context.Background(), "T-999")

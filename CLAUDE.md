@@ -33,8 +33,9 @@ stdout belongs to the MCP protocol on stdio; all logging goes to stderr.
 - At session start, call `get_context` (project `ticketd`) before deciding what
   to do.
 - Before any multi-step task, `search_tickets` for an existing ticket, else
-  `create_ticket` with `project: "ticketd"`. Move it to `in_progress` when you
-  start.
+  `create_ticket` with `project: "ticketd"`. When you pick one up,
+  `claim_ticket` it (pass a unique `agent` id) and move it to `in_progress`. If
+  the claim is refused, another agent has it — pick a different ticket.
 - `add_comment` when you: form a plan, make a non-obvious decision, reject an
   approach, hit a blocker, or finish. Write for a future session with zero
   context.

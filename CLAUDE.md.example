@@ -4,7 +4,9 @@ This project uses the `tickets` MCP server.
 
 - At session start, call `get_context` before deciding what to do.
 - Before any multi-step task, `search_tickets` for an existing ticket,
-  else `create_ticket`. Move it to in_progress when you start.
+  else `create_ticket`. When you start, `claim_ticket` it (pass a unique
+  `agent` id) and move it to in_progress. If the claim is refused,
+  another agent holds it — pick a different ticket.
 - `add_comment` when you: form a plan, make a non-obvious decision,
   reject an approach, hit a blocker, or finish. Write for a future
   session with zero context.
