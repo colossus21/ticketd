@@ -24,7 +24,7 @@ import (
 // with plain `go build`, commit falls back to the VCS info embedded by the Go
 // toolchain (see resolveCommit).
 var (
-	version = "0.1.0"
+	version = "0.2.0"
 	commit  = ""
 	date    = ""
 )
